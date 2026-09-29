@@ -64,9 +64,9 @@ func (d *DB) migrate(ctx context.Context) error {
 	if _, err := d.ExecContext(ctx, `INSERT IGNORE INTO service_state (id, poll_watermark, initialized) VALUES (1, 0, 0)`); err != nil {
 		return err
 	}
-	_, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS processed_transfers (
+	if _, err := d.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS processed_transfers (
 		id BIGINT AUTO_INCREMENT PRIMARY KEY,
-		oracle_id BIGINT NOT NULL,
+		oracle_id BIGINT NOT NULL DEFAULT 0,
 		transfer_id VARCHAR(64) NOT NULL DEFAULT '',
 		sender_msisdn VARCHAR(32) NOT NULL DEFAULT '',
 		receiver_msisdn VARCHAR(32) NOT NULL DEFAULT '',
@@ -77,10 +77,16 @@ func (d *DB) migrate(ctx context.Context) error {
 		sender_sms_status VARCHAR(16) NOT NULL DEFAULT '',
 		receiver_sms_status VARCHAR(16) NOT NULL DEFAULT '',
 		created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-		UNIQUE KEY uk_oracle_id (oracle_id),
+		UNIQUE KEY uk_transfer_id (transfer_id),
 		INDEX idx_created_at (created_at)
-	)`)
-	return err
+	)`); err != nil {
+		return err
+	}
+	_, err := d.ExecContext(ctx, `ALTER TABLE processed_transfers ADD UNIQUE KEY uk_transfer_id (transfer_id)`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate key name") {
+		return err
+	}
+	return nil
 }
 
 func (d *DB) GetState(ctx context.Context) (watermark int64, initialized bool, err error) {
@@ -98,9 +104,12 @@ func (d *DB) SetWatermark(ctx context.Context, watermark int64, initialized bool
 	return err
 }
 
-func (d *DB) ExistsOracleID(ctx context.Context, oracleID int64) (bool, error) {
+func (d *DB) ExistsTransferID(ctx context.Context, transferID string) (bool, error) {
+	if transferID == "" {
+		return false, nil
+	}
 	var n int
-	err := d.QueryRowContext(ctx, `SELECT COUNT(1) FROM processed_transfers WHERE oracle_id = ?`, oracleID).Scan(&n)
+	err := d.QueryRowContext(ctx, `SELECT COUNT(1) FROM processed_transfers WHERE transfer_id = ?`, transferID).Scan(&n)
 	if err != nil {
 		return false, err
 	}

@@ -21,10 +21,12 @@ type Client struct {
 }
 
 type PollResult struct {
-	Records   []Record
-	LastID    int64
-	FetchedAt time.Time
+	Records        []Record
+	LastTransferID int64
+	FetchedAt      time.Time
 }
+
+const transferIDNumericSQL = `TO_NUMBER(REGEXP_REPLACE(TO_CHAR(TRANSFERID), '[^0-9]', ''))`
 
 func NewClient(cfg Config) (*Client, error) {
 	dsn, err := buildDSN(cfg.User, cfg.Password, cfg.ConnString)
@@ -57,17 +59,17 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) Poll(ctx context.Context, lastID int64, batchSize int) (*PollResult, error) {
+func (c *Client) Poll(ctx context.Context, lastTransferID int64, batchSize int) (*PollResult, error) {
 	if batchSize <= 0 {
 		batchSize = 100
 	}
 	q := fmt.Sprintf(`SELECT ID, CREATEDDATE, TRANSFERID, SENDERSUBSCRIPTIONID, RECEIVERSUBSCRIPTIONID
 FROM VW_V
-WHERE ID > :1
-ORDER BY ID ASC
-FETCH FIRST %d ROWS ONLY`, batchSize)
+WHERE %s > :1
+ORDER BY %s ASC
+FETCH FIRST %d ROWS ONLY`, transferIDNumericSQL, transferIDNumericSQL, batchSize)
 
-	rows, err := c.db.QueryContext(ctx, q, lastID)
+	rows, err := c.db.QueryContext(ctx, q, lastTransferID)
 	if err != nil {
 		return nil, fmt.Errorf("query VW_V: %w", err)
 	}
@@ -79,7 +81,7 @@ FETCH FIRST %d ROWS ONLY`, batchSize)
 	}
 
 	result := &PollResult{FetchedAt: time.Now()}
-	var maxID int64
+	var maxTransferID int64
 	for rows.Next() {
 		dest := make([]interface{}, len(cols))
 		ptrs := make([]interface{}, len(cols))
@@ -94,13 +96,13 @@ FETCH FIRST %d ROWS ONLY`, batchSize)
 			rec.Data[strings.ToUpper(col)] = dest[i]
 		}
 		result.Records = append(result.Records, rec)
-		if id := rec.ID(); id > maxID {
-			maxID = id
+		if tid := rec.TransferIDNumeric(); tid > maxTransferID {
+			maxTransferID = tid
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	result.LastID = maxID
+	result.LastTransferID = maxTransferID
 	return result, nil
 }

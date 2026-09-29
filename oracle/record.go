@@ -66,6 +66,23 @@ func (r *Record) ID() int64 {
 	return id
 }
 
+func ParseTransferIDNumeric(input string) int64 {
+	norm := NormalizeTransferID(input)
+	if norm == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(norm, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func (r *Record) TransferIDNumeric() int64 {
+	s, _ := r.GetString("TRANSFERID")
+	return ParseTransferIDNumeric(s)
+}
+
 func (r *Record) String() string {
 	var parts []string
 	for k, v := range r.Data {

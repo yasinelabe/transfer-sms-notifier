@@ -27,7 +27,7 @@ func testDB(t *testing.T) (*store.DB, sqlmock.Sqlmock) {
 
 func TestProcessRecords_dryRun(t *testing.T) {
 	st, mock := testDB(t)
-	mock.ExpectQuery("SELECT COUNT").WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
+	mock.ExpectQuery("SELECT COUNT").WithArgs("15862087576").WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
 	mock.ExpectExec("INSERT INTO processed_transfers").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	cfg := config.Config{
@@ -76,7 +76,7 @@ func TestProcessRecords_liveSend(t *testing.T) {
 	defer srv.Close()
 
 	st, mock := testDB(t)
-	mock.ExpectQuery("SELECT COUNT").WithArgs(int64(2)).WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
+	mock.ExpectQuery("SELECT COUNT").WithArgs("999").WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow(0))
 	mock.ExpectExec("INSERT INTO processed_transfers").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	cfg := config.Config{

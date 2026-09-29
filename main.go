@@ -57,7 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load state: %v", err)
 	}
-	log.Printf("state watermark=%d initialized=%v", watermark, initialized)
+	log.Printf("state watermark_transfer_id=%d initialized=%v", watermark, initialized)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -83,11 +83,11 @@ func main() {
 				if err := db.SetWatermark(pollCtx, watermark, true); err != nil {
 					log.Printf("[poll] set watermark: %v", err)
 				}
-				log.Printf("[poll] init complete (empty view) watermark=%d", watermark)
+				log.Printf("[poll] init complete (empty view) watermark_transfer_id=%d", watermark)
 				return
 			}
 			if !cfg.ProcessFirstPoll {
-				newMark := result.LastID
+				newMark := result.LastTransferID
 				if newMark > watermark {
 					watermark = newMark
 				}
@@ -95,7 +95,7 @@ func main() {
 				if err := db.SetWatermark(pollCtx, watermark, true); err != nil {
 					log.Printf("[poll] set watermark: %v", err)
 				}
-				log.Printf("[poll] init skipped processing records=%d watermark=%d", recordCount, watermark)
+				log.Printf("[poll] init skipped processing records=%d watermark_transfer_id=%d", recordCount, watermark)
 				return
 			}
 		}
@@ -103,8 +103,8 @@ func main() {
 		var stats processor.TickStats
 		if recordCount > 0 {
 			stats = proc.ProcessRecords(pollCtx, result.Records)
-			if result.LastID > watermark {
-				watermark = result.LastID
+			if result.LastTransferID > watermark {
+				watermark = result.LastTransferID
 			}
 			if !initialized {
 				initialized = true
@@ -114,7 +114,7 @@ func main() {
 			}
 		}
 
-		log.Printf("[poll] records=%d processed=%d sent_receiver=%d sent_sender=%d dry_run_receiver=%d dry_run_sender=%d failed_receiver=%d failed_sender=%d last_id=%d sms_enabled=%v",
+		log.Printf("[poll] records=%d processed=%d sent_receiver=%d sent_sender=%d dry_run_receiver=%d dry_run_sender=%d failed_receiver=%d failed_sender=%d last_transfer_id=%d sms_enabled=%v",
 			recordCount, stats.Processed,
 			stats.Receiver.Sent, stats.Sender.Sent,
 			stats.Receiver.DryRun, stats.Sender.DryRun,

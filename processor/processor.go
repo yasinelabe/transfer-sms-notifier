@@ -39,7 +39,7 @@ func (p *Processor) ProcessRecords(ctx context.Context, records []oracle.Record)
 	var stats TickStats
 	for _, rec := range records {
 		if err := p.processOne(ctx, rec, &stats); err != nil {
-			log.Printf("[processor] oracle_id=%d error: %v", rec.ID(), err)
+			log.Printf("[processor] transfer_id=%s error: %v", oracle.NormalizeTransferID(mustString(rec, "TRANSFERID")), err)
 		} else {
 			stats.Processed++
 		}
@@ -48,11 +48,11 @@ func (p *Processor) ProcessRecords(ctx context.Context, records []oracle.Record)
 }
 
 func (p *Processor) processOne(ctx context.Context, rec oracle.Record, stats *TickStats) error {
-	oracleID := rec.ID()
-	if oracleID <= 0 {
-		return fmt.Errorf("invalid oracle id")
+	transferID := oracle.NormalizeTransferID(mustString(rec, "TRANSFERID"))
+	if transferID == "" {
+		return fmt.Errorf("invalid transfer id")
 	}
-	exists, err := p.db.ExistsOracleID(ctx, oracleID)
+	exists, err := p.db.ExistsTransferID(ctx, transferID)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (p *Processor) processOne(ctx context.Context, rec oracle.Record, stats *Ti
 		return nil
 	}
 
-	transferID := oracle.NormalizeTransferID(mustString(rec, "TRANSFERID"))
+	oracleID := rec.ID()
 	sender := oracle.NormalizeMSISDN(mustString(rec, "SENDERSUBSCRIPTIONID"))
 	receiver := oracle.NormalizeMSISDN(mustString(rec, "RECEIVERSUBSCRIPTIONID"))
 	createdDate := formatCreatedDate(rec)
@@ -81,14 +81,14 @@ func (p *Processor) processOne(ctx context.Context, rec oracle.Record, stats *Ti
 
 	if p.cfg.SendToReceivers {
 		p.handleSide(ctx, "receiver", receiver, p.cfg.ReceiverSMSHeader, RenderTemplate(p.cfg.ReceiverSMSContent, vars),
-			fmt.Sprintf("xfer-%d-receiver", oracleID), row, &row.ReceiverStatus, &row.ReceiverBatchID, &row.ReceiverTaskID, &stats.Receiver)
+			fmt.Sprintf("xfer-%s-receiver", transferID), row, &row.ReceiverStatus, &row.ReceiverBatchID, &row.ReceiverTaskID, &stats.Receiver)
 	} else {
 		row.ReceiverStatus = store.StatusDisabled
 	}
 
 	if p.cfg.SendToSenders {
 		p.handleSide(ctx, "sender", sender, p.cfg.SenderSMSHeader, RenderTemplate(p.cfg.SenderSMSContent, vars),
-			fmt.Sprintf("xfer-%d-sender", oracleID), row, &row.SenderStatus, &row.SenderBatchID, &row.SenderTaskID, &stats.Sender)
+			fmt.Sprintf("xfer-%s-sender", transferID), row, &row.SenderStatus, &row.SenderBatchID, &row.SenderTaskID, &stats.Sender)
 	} else {
 		row.SenderStatus = store.StatusDisabled
 	}
@@ -107,14 +107,14 @@ func (p *Processor) handleSide(ctx context.Context, side, msisdn, header, conten
 	if msisdn == "" {
 		*statusOut = store.StatusSkipped
 		stats.Skipped++
-		log.Printf("[processor] oracle_id=%d side=%s skipped: invalid msisdn", row.OracleID, side)
+		log.Printf("[processor] transfer_id=%s side=%s skipped: invalid msisdn", row.TransferID, side)
 		return
 	}
 	if !p.cfg.SMSSendingEnabled {
 		*statusOut = store.StatusDryRun
 		*batchOut = batchID
 		stats.DryRun++
-		log.Printf("[processor] dry_run oracle_id=%d side=%s number=%s header=%q content=%q", row.OracleID, side, msisdn, header, content)
+		log.Printf("[processor] dry_run transfer_id=%s side=%s number=%s header=%q content=%q", row.TransferID, side, msisdn, header, content)
 		return
 	}
 	resp, err := p.sms.SendSingle(ctx, smsbulk.SendRequest{
@@ -129,7 +129,7 @@ func (p *Processor) handleSide(ctx context.Context, side, msisdn, header, conten
 		*statusOut = store.StatusFailed
 		*batchOut = batchID
 		stats.Failed++
-		log.Printf("[processor] oracle_id=%d side=%s send failed: %v", row.OracleID, side, err)
+		log.Printf("[processor] transfer_id=%s side=%s send failed: %v", row.TransferID, side, err)
 		return
 	}
 	*statusOut = store.StatusSent
@@ -139,7 +139,7 @@ func (p *Processor) handleSide(ctx context.Context, side, msisdn, header, conten
 	}
 	*taskOut = resp.TaskID
 	stats.Sent++
-	log.Printf("[processor] oracle_id=%d side=%s sent batchId=%s taskId=%s", row.OracleID, side, *batchOut, resp.TaskID)
+	log.Printf("[processor] transfer_id=%s side=%s sent batchId=%s taskId=%s", row.TransferID, side, *batchOut, resp.TaskID)
 }
 
 func mustString(rec oracle.Record, key string) string {

@@ -54,9 +54,17 @@ Expected columns: `ID`, `CREATEDDATE`, `TRANSFERID`, `SENDERSUBSCRIPTIONID`, `RE
 
 ## MySQL tables
 
-- `service_state` — poll watermark
-- `processed_transfers` — dedup + SMS audit per transfer
+- `service_state` — poll watermark (`poll_watermark` stores the last seen numeric **transfer ID**)
+- `processed_transfers` — dedup + SMS audit per transfer (unique on `transfer_id`)
+
+If upgrading from an older build that watermarked by Oracle row `ID`, reset the watermark:
+
+```sql
+UPDATE service_state SET poll_watermark = 0, initialized = 0 WHERE id = 1;
+```
+
+Then restart (use `PROCESS_ON_FIRST_POLL=true` only if you want to backfill).
 
 ## Logs
 
-Each poll logs: `records`, `sent_*`, `dry_run_*`, `failed_*`, `last_id`, `sms_enabled`.
+Each poll logs: `records`, `sent_*`, `dry_run_*`, `failed_*`, `last_transfer_id`, `sms_enabled`.
